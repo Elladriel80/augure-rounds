@@ -28,6 +28,13 @@ name: Daily Trading (auto)
 # contents and packages permissions"). PR forks cannot trigger this
 # workflow (schedule + workflow_dispatch only) so the surface area is
 # limited to the maintainer.
+#
+# The push uses that same GITHUB_TOKEN — no long-lived PAT is stored in
+# the repo secrets any more. The token is minted per-run, scoped to this
+# repository, and dies with the job. Pushing to the default branch also
+# requires the GitHub Actions app to be a bypass actor of the "Protect
+# main" ruleset (rulesets apply to GITHUB_TOKEN, and the previous PAT
+# only got through because it belonged to a repo admin).
 
 on:
   schedule:
@@ -74,11 +81,15 @@ jobs:
           # Need full history for git operations later in the job.
           fetch-depth: 0
           # Ne PAS persister de credentials dans .git/config (revue 2026-06-10
-          # D2). Avant, `token: BOT_PAT` laissait le PAT en clair dans
-          # .git/config pendant TOUT le job. Le clone se fait avec le
-          # GITHUB_TOKEN par défaut (lecture suffit) ; le PAT fine-grained
-          # (BOT_PAT, admin du repo, bypass des règles de branche) n'est
-          # injecté qu'à l'étape push, et seulement là.
+          # D2). Le clone se fait avec le GITHUB_TOKEN en lecture ; le
+          # token de push est injecté dans l'env de la seule étape
+          # « Commit and push », jamais écrit dans .git/config.
+          #
+          # 2026-09-06 : `BOT_PAT` supprimé. Le PAT du bot a expiré vers le
+          # 11/08/2026 et a débranché le pipeline pendant 26 jours
+          # (« Invalid username or token » sur chaque run). On ne dépend
+          # plus d'un secret à renouveler : le GITHUB_TOKEN éphémère du run
+          # suffit, le push visant le dépôt courant.
           persist-credentials: false
 
       - name: Set up Python
@@ -157,10 +168,12 @@ jobs:
       - name: Commit and push
         if: ${{ inputs.dry_run != true && steps.diff.outputs.has_changes == 'true' }}
         env:
-          # PAT injecté UNIQUEMENT ici, via l'env de l'étape — jamais persisté
-          # dans .git/config (revue 2026-06-10 D2). GitHub masque BOT_PAT dans
-          # les logs. github.repository = owner/repo (pas un secret).
-          BOT_PAT: ${{ secrets.BOT_PAT }}
+          # Token éphémère fourni par Actions à ce run, injecté UNIQUEMENT
+          # ici via l'env de l'étape — jamais persisté dans .git/config
+          # (revue 2026-06-10 D2). Il expire à la fin du job et n'a que les
+          # droits déclarés par `permissions:` en tête de workflow
+          # (contents: write). github.repository = owner/repo, pas un secret.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DATE_ISO=$(date -u +%Y-%m-%d)
           git add predictor/runs \
@@ -173,4 +186,4 @@ jobs:
             echo "Nothing staged after add; that's OK."
             exit 0
           }
-          git push "https://x-access-token:${BOT_PAT}@github.com/${{ github.repository }}.git" HEAD:main
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
