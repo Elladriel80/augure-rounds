@@ -173,7 +173,7 @@ jobs:
           # (revue 2026-06-10 D2). Il expire à la fin du job et n'a que les
           # droits déclarés par `permissions:` en tête de workflow
           # (contents: write). github.repository = owner/repo, pas un secret.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           DATE_ISO=$(date -u +%Y-%m-%d)
           git add predictor/runs \
