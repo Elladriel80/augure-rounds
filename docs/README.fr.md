@@ -50,7 +50,7 @@ précise. La version anglaise de cet index est en [README.md](README.md).
 
 | Document | Lang | Objet |
 |---|---|---|
-| [contributor-starter-issues.md](contributor-starter-issues.md) | EN | Catalogue de tâches réelles et bornées, exploitables comme tickets `good-first-issue`. |
+| [contributor-starter-issues.md](contributor-starter-issues.md) / [contributor-starter-issues.fr.md](contributor-starter-issues.fr.md) | EN/FR | Catalogue de tâches réelles et bornées, exploitables comme tickets `good-first-issue`. |
 | [bounty-mechanism.md](bounty-mechanism.md) | EN | Placeholder décrivant le mécanisme de bounty *futur* (Phase 2) — précise explicitement qu'Aratea **ne** lance actuellement **pas** de programme de bounty cash. |
 
 ## Documents racine liés

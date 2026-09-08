@@ -50,7 +50,7 @@ column says so. The French mirror of this index is at
 
 | Document | Lang | Purpose |
 |---|---|---|
-| [contributor-starter-issues.md](contributor-starter-issues.md) | EN | Catalogue of scoped, real tasks suitable for opening as `good-first-issue` tickets. |
+| [contributor-starter-issues.md](contributor-starter-issues.md) / [contributor-starter-issues.fr.md](contributor-starter-issues.fr.md) | EN/FR | Catalogue of scoped, real tasks suitable for opening as `good-first-issue` tickets. |
 | [bounty-mechanism.md](bounty-mechanism.md) | EN | Placeholder describing the *future* (Phase 2) bounty mechanism — explicitly states that Aratea does **not** currently run a cash bounty program. |
 
 ## Related top-level documents
