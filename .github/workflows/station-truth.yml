@@ -92,6 +92,12 @@ jobs:
           if [ -n "${{ inputs.skill_start }}" ]; then START_FLAG="--start ${{ inputs.skill_start }}"; fi
           python scripts/eval_station_skill.py $STATIONS_FLAG $START_FLAG
 
+      - name: Station bias vs Kalshi market (offline replay of live captures)
+        working-directory: predictor
+        continue-on-error: true
+        run: |
+          python scripts/eval_station_bias_market.py
+
       - name: Configure git identity
         if: ${{ inputs.dry_run != true }}
         run: |
