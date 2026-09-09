@@ -1,0 +1,125 @@
+name: Station truth & skill (weekly)
+
+# FR : Collecte hebdomadaire de la vérité de résolution par station (rapports
+# CLI du NWS via l'archive IEM), audit ERA5 vs CLI, et backtest de skill des
+# prévisions Previous Runs contre cette vérité, hors marché. Tourne ici parce
+# que l'agent distant n'a pas de réseau vers IEM / Open-Meteo ; le runner
+# GitHub en a. Commit les sorties compactes sous predictor/data/truth/ : c'est
+# la mémoire durable des prévisions (Previous Runs ne garde que ~60 jours).
+#
+# EN : Weekly collection of the station-level resolution truth (NWS CLI via
+# the IEM archive), ERA5 vs CLI audit, and market-free skill backtest of
+# Previous Runs forecasts against that truth. Runs here because the remote
+# agent has no network to IEM / Open-Meteo; the GitHub runner does. Commits
+# the compact outputs under predictor/data/truth/, the durable forecast memory.
+#
+# Même modèle de sécurité que daily-trading.yml : contents: write uniquement
+# pour pousser les sorties, token injecté dans la seule étape de push.
+
+on:
+  schedule:
+    # Lundi 06:00 UTC : les CLI de la semaine sont finaux, les Previous Runs
+    # de la semaine passée sont encore dans la fenêtre glissante.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      stations:
+        description: 'ICAO séparés par des virgules (vide = 18 stations Kalshi)'
+        required: false
+        type: string
+        default: ''
+      truth_start_year:
+        description: 'Première année de vérité CLI à collecter'
+        required: false
+        type: string
+        default: '2020'
+      skill_start:
+        description: 'Premier jour cible du backtest de skill (YYYY-MM-DD, vide = 120 derniers jours)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Dry run (ne commit ni ne pousse)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: station-truth
+  cancel-in-progress: false
+
+jobs:
+  station-truth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: predictor
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock --require-hashes
+
+      - name: Build station truth (IEM CLI) + ERA5 audit
+        working-directory: predictor
+        run: |
+          STATIONS_FLAG=""
+          if [ -n "${{ inputs.stations }}" ]; then STATIONS_FLAG="--stations ${{ inputs.stations }}"; fi
+          python scripts/build_station_truth.py --start-year "${{ inputs.truth_start_year || '2020' }}" $STATIONS_FLAG
+
+      - name: Evaluate forecast skill vs CLI (Previous Runs)
+        working-directory: predictor
+        continue-on-error: true
+        run: |
+          STATIONS_FLAG=""
+          if [ -n "${{ inputs.stations }}" ]; then STATIONS_FLAG="--stations ${{ inputs.stations }}"; fi
+          START_FLAG=""
+          if [ -n "${{ inputs.skill_start }}" ]; then START_FLAG="--start ${{ inputs.skill_start }}"; fi
+          python scripts/eval_station_skill.py $STATIONS_FLAG $START_FLAG
+
+      - name: Configure git identity
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          git config user.name  "aratea-bot"
+          git config user.email "aratea-bot@users.noreply.github.com"
+
+      - name: Detect changes
+        if: ${{ inputs.dry_run != true }}
+        id: diff
+        run: |
+          git add -N predictor/data/truth
+          if git diff --quiet -- predictor/data/truth; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes to commit."
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git status --short predictor/data/truth
+          fi
+
+      - name: Commit and push
+        if: ${{ inputs.dry_run != true && steps.diff.outputs.has_changes == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          DATE_ISO=$(date -u +%Y-%m-%d)
+          git add predictor/data/truth
+          git commit -m "chore(auto): station truth + skill ${DATE_ISO} (CLI, ERA5 audit, Previous Runs skill)" || {
+            echo "Nothing staged after add; that's OK."
+            exit 0
+          }
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main

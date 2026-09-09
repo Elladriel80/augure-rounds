@@ -27,3 +27,10 @@ data/backtests/*.json
 
 .env
 .DS_Store
+
+# Station truth (src/truth): raw HTTP caches are regenerable, the compact
+# outputs (cli_daily.json, era5_vs_cli.*, skill/*.md|json) ARE tracked —
+# they are the durable memory of forecasts + truth.
+data/truth/iem_cache/
+data/backfill_cache/
+data/truth/skill/skill_scores.json
