@@ -73,6 +73,13 @@ jobs:
     # garde-fou fin est le timeout par step dans daily_run.py (13 min/step),
     # qui laisse daily_auto + le push du manifest tourner même si un step cale.
     timeout-minutes: 50
+    env:
+      # Correction station (2026-09-09) : mu += biais station appris contre la
+      # vérité CLI, sigma = résiduel appris (table data/truth/skill/
+      # station_bias.json, rafraîchie chaque lundi par station-truth.yml).
+      # Backtest marché J-1 : écart à kalshi_mid +0.018 → +0.004. Réversible :
+      # passer à "0" restaure la politique brute.
+      ARATEA_ENS_STATION_BIAS: "1"
 
     steps:
       - name: Checkout

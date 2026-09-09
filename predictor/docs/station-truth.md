@@ -50,3 +50,32 @@ No market comparison (that stays in `_backfill_dataset.py`), no production predi
 
 ### Next human decision
 If `skill_report.md` shows `station_bias` below `raw` with sign-test p < 0.05 over ≥ 30 HOLDOUT dates, wire the correction into `EnsemblePredictor` behind `ARATEA_ENS_STATION_BIAS` (default OFF) and rerun the J-1 market backtest.
+
+---
+
+## Résultats du premier run et activation du flag (2026-09-09) / First run results and flag activation
+
+**Run hebdo #1** (18 stations, CLI 2020 → 2026-09-08, skill 2026-05-12 → 2026-09-07, HOLDOUT ≥ 2026-08-03, 36 dates) :
+
+| Politique | Brier HOLDOUT hors marché |
+|---|---|
+| raw (production) | 0,1258 |
+| station_bias | 0,1151 |
+| climato CLI | 0,1273 |
+
+station_bias bat raw sur 35 dates sur 36 (p < 0,0001). raw ne bat la climato que 22/36 (p = 0,12).
+
+**Audit ERA5 vs CLI** (`data/truth/era5_vs_cli.md`) : ERA5 tombe sur le bon entier 7 à 29 % des jours et se trompe d'un bin complet (≥ 2 °F) 20 à 70 % des jours selon la station. Cible fausse confirmée.
+
+**Backtest marché hors ligne** (`scripts/eval_station_bias_market.py`, captures live rejouées, biais point-in-time, issue par CLI, 8 613 bins, 63 dates) :
+
+| lead | Brier raw | Brier station | Brier kalshi_mid |
+|---|---|---|---|
+| J0 (capture l'après-midi même) | 0,1453 | 0,1294 | 0,0771 |
+| J-1 | 0,1463 | 0,1325 | 0,1282 |
+
+station bat raw 54/63 dates. À J-1 l'écart au marché passe de +0,018 à +0,004. À J0 le marché a déjà vu la température de l'après-midi : hors d'atteinte sans observations temps réel (piste C1 de la note).
+
+**Décision** : flag `ARATEA_ENS_STATION_BIAS=1` activé dans `daily-trading.yml` (PR #221). Table `station_bias.json` rafraîchie chaque lundi. Réversible en passant le flag à 0. Limite connue : biais appris sur une saison (mai-septembre), à surveiller au changement de saison via le rapport hebdo.
+
+EN: first weekly run confirms the wrong-target diagnosis (ERA5 off by a full bin 20-70 % of days), station_bias beats the raw policy 35/36 holdout dates (Brier 0.1258 → 0.1151), and on live captures replayed offline it closes the J-1 gap to kalshi_mid from +0.018 to +0.004 (J0 stays out of reach without real-time observations). Flag enabled in daily-trading.yml, reversible, table refreshed weekly; known limit: single-season bias.

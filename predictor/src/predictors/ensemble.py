@@ -77,6 +77,7 @@ class EnsemblePredictor(Predictor):
         max_horizon_days: int = 10,
         climato_sigma_weight: Optional[float] = None,
         sigma_floor: Optional[float] = None,
+        station_bias: Optional[bool] = None,
     ):
         self.weather = weather_client or OpenMeteoClient()
         self.models = models or DEFAULT_ENSEMBLE
@@ -103,6 +104,23 @@ class EnsemblePredictor(Predictor):
             sigma_floor = float(os.environ.get("ARATEA_ENS_SIGMA_FLOOR", "1.0"))
         self.climato_sigma_weight = climato_sigma_weight
         self.sigma_floor = sigma_floor
+
+        # Correction station (2026-09-09). Les modeles ont un biais systematique
+        # par station de resolution (LAX max -4F, DEN min -4F, MIA max +3F...),
+        # mesure contre la verite CLI sur data/truth/skill/station_bias.json.
+        # Backtest hors marche : Brier 0.1258 -> 0.1151, 35/36 dates. Backtest
+        # marche (captures live, biais point-in-time) : 0.1458 -> 0.1309,
+        # 54/63 dates ; a J-1 l'ecart a kalshi_mid passe de +0.018 a +0.004.
+        # Defaut OFF ; ARATEA_ENS_STATION_BIAS=1 active mu += biais et
+        # sigma = sigma residuel appris (plancher sigma_floor). Sans entree
+        # pour la station/variable/lead, la politique brute s'applique.
+        if station_bias is None:
+            station_bias = os.environ.get("ARATEA_ENS_STATION_BIAS", "0").strip().lower() in ("1", "true", "on")
+        self.station_bias_enabled = bool(station_bias)
+        self.station_bias_table = None
+        if self.station_bias_enabled:
+            from src.truth.station_bias_table import StationBiasTable
+            self.station_bias_table = StationBiasTable()
 
         unknown = [m for m in self.models if m not in AVAILABLE_MODELS]
         if unknown:
@@ -206,6 +224,16 @@ class EnsemblePredictor(Predictor):
         if self.sigma_floor > 0.0:
             sigma_total = max(self.sigma_floor, sigma_total)
 
+        # Correction station (flag ARATEA_ENS_STATION_BIAS) : decale mu du biais
+        # appris et remplace sigma par le residuel appris. Pas d'entree -> brut.
+        station_bias_applied = None
+        if self.station_bias_table is not None:
+            sb = self.station_bias_table.lookup(contract.location_key, contract.variable, days_ahead)
+            if sb is not None:
+                mu = mu + sb[0]
+                sigma_total = max(self.sigma_floor, sb[1]) if self.sigma_floor > 0.0 else sb[1]
+                station_bias_applied = {"bias_f": sb[0], "sigma_f": sb[1], "n_train": sb[2]}
+
         # Correction d'arrondi NWS : pour les températures, élargit l'intervalle
         # de ±0.5°F (l'arrondi entier capture les valeurs entre n-0.5 et n+0.5).
         is_temp = contract.variable in ("temp_max", "temp_min")
@@ -235,6 +263,7 @@ class EnsemblePredictor(Predictor):
                 "blend_weight_forecast": blend_w,
                 "days_ahead": days_ahead,
                 "n_models_active": len(per_model_value),
+                "station_bias": station_bias_applied,
                 **{f"climato_{k}": v for k, v in clim_inputs.items()},
             },
             confidence=clim.confidence,
